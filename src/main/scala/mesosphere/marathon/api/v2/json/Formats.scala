@@ -2,13 +2,14 @@ package mesosphere.marathon.api.v2.json
 
 import mesosphere.marathon.Protos.Constraint.Operator
 import mesosphere.marathon.Protos.HealthCheckDefinition.Protocol
+import mesosphere.marathon.Protos.ResidencyDefinition.TaskLostBehavior
 import mesosphere.marathon.Protos.{ Constraint, MarathonTask }
 import mesosphere.marathon.core.appinfo._
 import mesosphere.marathon.event._
 import mesosphere.marathon.event.http.EventSubscribers
 import mesosphere.marathon.health.{ Health, HealthCheck }
 import mesosphere.marathon.state.Container.Docker.PortMapping
-import mesosphere.marathon.state.Container.{ Docker, Volume }
+import mesosphere.marathon.state.Container.{ Docker, PersistentVolumeInfo, Volume }
 import mesosphere.marathon.state._
 import mesosphere.marathon.tasks.MarathonTasks
 import mesosphere.marathon.upgrade._
@@ -21,6 +22,7 @@ import play.api.libs.json._
 import scala.collection.immutable.Seq
 import scala.concurrent.duration._
 
+// scalastyle:off file.size.limit
 object Formats extends Formats {
 
   implicit class ReadsWithDefault[A](val reads: Reads[Option[A]]) extends AnyVal {
@@ -208,13 +210,16 @@ trait ContainerFormats {
   )(Docker(_, _, _, _, _, _), unlift(Docker.unapply))
 
   implicit lazy val ModeFormat: Format[mesos.Volume.Mode] =
-    enumFormat(mesos.Volume.Mode.valueOf, str => s"$str is not a valid mode")
+    enumFormat(mesos.Volume.Mode.valueOf, str => s"$str is not a valid mde")
+
+  implicit lazy val PersistentVolumeInfoFormat: Format[PersistentVolumeInfo] = Json.format[PersistentVolumeInfo]
 
   implicit lazy val VolumeFormat: Format[Volume] = (
     (__ \ "containerPath").format[String] ~
-    (__ \ "hostPath").format[String] ~
-    (__ \ "mode").format[mesos.Volume.Mode]
-  )(Volume(_, _, _), unlift(Volume.unapply))
+    (__ \ "hostPath").formatNullable[String] ~
+    (__ \ "mode").format[mesos.Volume.Mode] ~
+    (__ \ "persistent").formatNullable[PersistentVolumeInfo]
+  )(Volume(_, _, _, _), unlift(Volume.unapply))
 
   implicit lazy val ContainerTypeFormat: Format[mesos.ContainerInfo.Type] =
     enumFormat(mesos.ContainerInfo.Type.valueOf, str => s"$str is not a valid container type")
@@ -526,7 +531,8 @@ trait V2Formats {
           labels: Map[String, String],
           acceptedResourceRoles: Option[Set[String]],
           ipAddress: Option[IpAddress],
-          version: Timestamp)
+          version: Timestamp,
+          residency: Option[Residency])
 
         val extraReads: Reads[ExtraFields] =
           (
@@ -538,7 +544,8 @@ trait V2Formats {
             (__ \ "labels").readNullable[Map[String, String]].withDefault(AppDefinition.DefaultLabels) ~
             (__ \ "acceptedResourceRoles").readNullable[Set[String]](nonEmpty) ~
             (__ \ "ipAddress").readNullable[IpAddress] ~
-            (__ \ "version").readNullable[Timestamp].withDefault(Timestamp.now())
+            (__ \ "version").readNullable[Timestamp].withDefault(Timestamp.now()) ~
+            (__ \ "residency").readNullable[Residency]
           )(ExtraFields)
             .filter(ValidationError("You cannot specify both uris and fetch fields")) { extra =>
               !(extra.uris.nonEmpty && extra.fetch.nonEmpty)
@@ -563,7 +570,8 @@ trait V2Formats {
             labels = extra.labels,
             acceptedResourceRoles = extra.acceptedResourceRoles,
             ipAddress = extra.ipAddress,
-            versionInfo = AppDefinition.VersionInfo.OnlyVersion(extra.version)
+            versionInfo = AppDefinition.VersionInfo.OnlyVersion(extra.version),
+            residency = extra.residency
           )
         }
       }
@@ -585,6 +593,31 @@ trait V2Formats {
       else healthCheck
     })
   }
+
+  implicit lazy val taskLostBehaviorWrites = Writes[TaskLostBehavior] { taskLostBehavior =>
+    JsString(taskLostBehavior.name())
+  }
+  private[this] lazy val allowedTaskLostBehaviorString =
+    TaskLostBehavior.values().toSeq.map(_.getDescriptorForType.getName).mkString(", ")
+
+  implicit lazy val taskLostBehaviorReads = Reads[TaskLostBehavior] { json =>
+    json.validate[String].flatMap { behaviorString: String =>
+
+      Option(TaskLostBehavior.valueOf(behaviorString)) match {
+        case Some(taskLostBehavior) => JsSuccess(taskLostBehavior)
+        case None =>
+          JsError(s"'$behaviorString' is not a valid taskLostBehavior. Allowed values: $allowedTaskLostBehaviorString")
+      }
+
+    }
+  }
+
+  implicit lazy val ResidencyFormat: Format[Residency] = (
+    (__ \ "relaunchEscalationTimeoutSeconds").formatNullable[Long]
+    .withDefault(Residency.defaultRelaunchEscalationTimeoutSeconds) ~
+    (__ \ "taskLostBehavior").formatNullable[TaskLostBehavior]
+    .withDefault(Residency.defaultTaskLostBehaviour)
+  )(Residency(_, _), unlift(Residency.unapply))
 
   implicit lazy val AppDefinitionWrites: Writes[AppDefinition] = {
     implicit lazy val durationWrites = Writes[FiniteDuration] { d =>
@@ -621,7 +654,8 @@ trait V2Formats {
         "labels" -> app.labels,
         "acceptedResourceRoles" -> app.acceptedResourceRoles,
         "ipAddress" -> app.ipAddress,
-        "version" -> app.version
+        "version" -> app.version,
+        "residency" -> app.residency
       )
       Json.toJson(app.versionInfo) match {
         case JsNull     => appJson
@@ -745,7 +779,8 @@ trait V2Formats {
         labels: Option[Map[String, String]],
         version: Option[Timestamp],
         acceptedResourceRoles: Option[Set[String]],
-        ipAddress: Option[IpAddress])
+        ipAddress: Option[IpAddress],
+        residency: Option[Residency])
 
       val extraReads: Reads[ExtraFields] =
         (
@@ -756,7 +791,8 @@ trait V2Formats {
           (__ \ "labels").readNullable[Map[String, String]] ~
           (__ \ "version").readNullable[Timestamp] ~
           (__ \ "acceptedResourceRoles").readNullable[Set[String]](nonEmpty) ~
-          (__ \ "ipAddress").readNullable[IpAddress]
+          (__ \ "ipAddress").readNullable[IpAddress] ~
+          (__ \ "residency").readNullable[Residency]
         )(ExtraFields)
 
       extraReads.filter(ValidationError("You cannot specify both uris and fetch fields")) {
@@ -769,7 +805,8 @@ trait V2Formats {
           version = extra.version,
           acceptedResourceRoles = extra.acceptedResourceRoles,
           ipAddress = extra.ipAddress,
-          fetch = extra.fetch.orElse(extra.uris.map { seq => seq.map(FetchUri.apply(_)) })
+          fetch = extra.fetch.orElse(extra.uris.map { seq => seq.map(FetchUri.apply(_)) }),
+          residency = extra.residency
         )
       }
     }
@@ -781,4 +818,5 @@ trait V2Formats {
     (__ \ "dependencies").formatNullable[Set[PathId]].withDefault(Group.defaultDependencies) ~
     (__ \ "version").formatNullable[Timestamp].withDefault(Group.defaultVersion)
   )(Group(_, _, _, _, _), unlift(Group.unapply))
+
 }

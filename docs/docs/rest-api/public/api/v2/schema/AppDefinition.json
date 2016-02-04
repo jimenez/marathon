@@ -156,8 +156,8 @@
         },
         "type": {
           "type": "string",
-          "description": "The only supported container type at the moment is DOCKER.",
-          "enum": ["DOCKER"]
+          "description": "Supported container types at the moment are DOCKER and MESOS.",
+          "enum": ["MESOS", "DOCKER"]
         },
         "volumes": {
           "items": {
@@ -172,6 +172,17 @@
                 "type": "string",
                 "description": "The path of the volume on the host",
                 "minLength": 1
+              },
+              "persistent": {
+                "additionalProperties": false,
+                "properties": {
+                  "size": {
+                    "type": "integer",
+                    "description": "The size of the persistent volume in MiB",
+                    "minimum": 0
+                  }
+                },
+                "type": "object"
               },
               "mode": {
                 "type": "string",

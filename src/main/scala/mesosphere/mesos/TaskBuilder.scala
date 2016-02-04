@@ -4,6 +4,7 @@ import com.google.protobuf.{ ByteString, TextFormat }
 import mesosphere.marathon.Protos.HealthCheckDefinition.Protocol
 import mesosphere.marathon.Protos.MarathonTask
 import mesosphere.marathon._
+import mesosphere.marathon.api.v2.serialization.ContainerSerializer
 import mesosphere.marathon.health.HealthCheck
 import mesosphere.marathon.state.{ AppDefinition, DiscoveryInfo, IpAddress, PathId }
 import mesosphere.mesos.ResourceMatcher.ResourceMatch
@@ -229,7 +230,7 @@ class TaskBuilder(app: AppDefinition,
             }
           )
         }
-        builder.mergeFrom(containerWithPortMappings.toMesos())
+        builder.mergeFrom(ContainerSerializer.toMesos(containerWithPortMappings))
       }
 
       // Set NetworkInfo if necessary
