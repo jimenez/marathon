@@ -15,7 +15,14 @@ For a detailed description of how ports work in Marathon, see [Ports](ports.html
 
 ## Mesos-DNS
 
-Mesos-DNS generates a hostname for each Mesos task (including Marathon application instances) and translates these names to the IP address and port on the machine currently running each application. Mesos-DNS is particularly useful if the apps are launched through multiple frameworks (not just Marathon). Check the Mesos-DNS [documentation and tutorials page](http://mesosphere.github.io/mesos-dns/) for further information.
+Mesos-DNS generates a SRV record for each Mesos task (including Marathon application instances) and translates these records to the IP address and port on the machine currently running each application.
+
+Mesos-DNS is particularly useful when:
+* apps are launched through multiple frameworks (not just Marathon)
+* you're using an IP per container solution like [Project Calico](http://www.projectcalico.org/)
+* you use random host port assignments in Marathon
+
+Check the Mesos-DNS [documentation and tutorials page](http://mesosphere.github.io/mesos-dns/) for further information.
 
 ## Marathon-lb
 
@@ -23,11 +30,13 @@ An alternative way to implement service discovery is to run a TCP/HTTP proxy on 
 
 Marathon-lb is a Dockerized application that includes both HAProxy an application that uses Marathon's REST API to regenerate the HAProxy configuration. It supports more advanced functionality like SSL offloading, sticky connections and VHost based load balancing, allowing you to specify virtual hosts for your Marathon applications.
 
+When using Marathon-lb, note that it is not necessary to set `requirePorts` to `true`, as described in the [ports documentation](ports.html).
+
 See the [Marathon-lb repository](https://github.com/mesosphere/marathon-lb) for more information or check out [the tutorial on the Mesosphere blog](https://mesosphere.com/blog/2015/12/04/dcos-marathon-lb/).
 
 ## haproxy-marathon-bridge
 
-Marathon ships with a simple shell script called `haproxy-marathon-bridge` which uses Marathon's REST API to create a config file for HAProxy. The `haproxy-marathon-bridge` provides a minimum set of functionality and is easier to understand for beginners or as a good starting point for a custom implementation.
+Marathon ships with a simple shell script called `haproxy-marathon-bridge` which uses Marathon's REST API to create a config file for HAProxy. The `haproxy-marathon-bridge` provides a minimum set of functionality and is easier to understand for beginners or as a good starting point for a custom implementation. Note that this script itself is now deprecated and should not be used as-is in production. For production use, please consider using Marathon-lb, above.
 
 To generate an HAProxy configuration from Marathon running at `localhost:8080` with the `haproxy-marathon-bridge` script:
 

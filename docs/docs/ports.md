@@ -10,7 +10,7 @@ Port configuration for applications in Marathon can be confusing and there is [a
 
 *containerPort*: A _container port_ specifies a port within a container. This is only necessary as part of a _port mapping_ when using `BRIDGE` mode networking with a Docker container.
 
-*hostPort*: A _host port_ specifies a port on the host to bind to. This is only necessary as part of a _port mapping_ when using `BRIDGE` mode networking with a Docker container.
+*hostPort*: A _host port_ specifies a port on the host to bind to. When used with `BRIDGE` mode networking, you specify a _port mapping_ from a _host port_ to a _container port_. In `HOST` networking, requested ports are _host ports_ by default. Note that only _host ports_ are made available to a task through environment variables.
 
 *BRIDGE networking*: `BRIDGE` mode networking is used by Docker applications that specify `BRIDGE` mode networking. In this mode, container ports (a port within the container) are mapped to host ports (a port on the host machine). In this mode, applications bind to the specified ports within the container and Docker networking binds to the specified ports on the host.
 
@@ -28,11 +28,13 @@ Port configuration for applications in Marathon can be confusing and there is [a
 
 ## Random Port Assignment
 
-Using the value 0 for any port settings indicates to Marathon that you would like a random port assignment. However, if containerPort is set to 0 within a portMapping, it is set to the same value as hostPort.
+Using the value 0 for any port settings indicates to Marathon that you would like a random port assignment. However, if `containerPort` is set to 0 within a `portMapping`, it is set to the same value as `hostPort`.
 
 ## Environment Variables
 
-Each port value is exposed to the running application instance via environment variables `$PORT0`, `$PORT1`, etc. Each Marathon application is given a single port by default, so `$PORT0` is always available. These variables are available inside a Docker container being run by Marathon too.
+Each *host port* value is exposed to the running application instance via environment variables `$PORT0`, `$PORT1`, etc. Each Marathon application is given a single port by default, so `$PORT0` is always available. These variables are available inside a Docker container being run by Marathon too.
+
+When using `BRIDGE` mode networking, be sure to bind your application to the `containerPort`s you have specified in your `portMapping`s. However, if you have set `containerPort` to 0 then this will be the same as `hostPort` and you can use the `$PORT` environment variables.
 
 ## Example Configuration
 
@@ -66,7 +68,7 @@ You can specify the ports that are available through the `ports` array:
     ],
 ```
 
-In this example, we specify three randomly assigned ports which would then be available to our command via the environment variables `$PORT0`, `$PORT1` and `$PORT2`.
+In this example, we specify three randomly assigned host ports which would then be available to our command via the environment variables `$PORT0`, `$PORT1` and `$PORT2`.
 
 These ports also become service ports for your application and are reserved cluster wide.
 
@@ -95,7 +97,7 @@ This property is useful if you don't use a service discovery solution such as HA
 
 #### Referencing Ports
 
-You can reference ports in the Dockerfile for our fictitious app as follows:
+You can reference host ports in the Dockerfile for our fictitious app as follows:
 
 ```sh
 CMD ./my-app --http-port=$PORT0 --https-port=$PORT1 --monitoring-port=$PORT2
